@@ -470,7 +470,7 @@ void init(Window window, bool ide) {
     UINT compileFlags = 0;
 #endif
 auto shaderPath = L"../shaders.hlsl";
-if (ide) shaderPath = L"shaders.hlsl";
+if (ide) shaderPath = L"../../shaders.hlsl";
 
     ThrowIfFailed(D3DCompileFromFile(shaderPath, nullptr, nullptr, "VSMain", "vs_5_0", 
                                                         compileFlags, 0, &vertexShader, nullptr));
@@ -586,15 +586,15 @@ if (ide) shaderPath = L"shaders.hlsl";
 
     {
         auto texturePath = L"../hero.png";
-        if (ide) texturePath = L"hero.png";
+        if (ide) texturePath = L"../../hero.png";
         m_heroTexture = loadTextureFromFile(texturePath);
 
         texturePath = L"../enemy1.png";
-        if (ide) texturePath = L"enemy1.png";
+        if (ide) texturePath = L"../../enemy1.png";
         m_enemy1Texture = loadTextureFromFile(texturePath);
 
         texturePath = L"../enemy2.png";
-        if (ide) texturePath = L"enemy2.png";
+        if (ide) texturePath = L"../../enemy2.png";
         m_enemy2Texture = loadTextureFromFile(texturePath);
     }
     

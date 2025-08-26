@@ -8,7 +8,7 @@
         "name": "DX12Test launch",
         "type": "cppvsdbg",
         "request": "launch",
-        "program": "${workspaceFolder}/build/dx12test.exe",
+        "program": "${workspaceFolder}/build/dx12_rts.exe",
         "args": ["ide"],
         "stopAtEntry": false,
         "cwd": "${fileDirname}",
