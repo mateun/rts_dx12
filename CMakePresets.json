@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "configurePresets": [
+    {
+      "name": "vcpkg",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+      }
+    },
+    { "name": "debug",   "inherits": "vcpkg", "cacheVariables": { "CMAKE_BUILD_TYPE": "Debug"   } },
+    { "name": "release", "inherits": "vcpkg", "cacheVariables": { "CMAKE_BUILD_TYPE": "Release" } }
+  ],
+   "buildPresets": [
+    { "name": "debug",   "configurePreset": "debug"   },
+    { "name": "release", "configurePreset": "release" }
+  ]
+}
