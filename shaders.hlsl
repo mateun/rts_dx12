@@ -4,6 +4,12 @@ struct PSInput
     float2 uv: TEXCOORD0;
 };
 
+struct InstanceData {
+    row_major float4x4 World;   
+    // uint boneBase; float4 tint; // add more per-instance fields later
+};
+StructuredBuffer<InstanceData> gInstances : register(t1);
+
 cbuffer FrameCB : register(b0)
 {
     row_major float4x4 View;      
@@ -16,11 +22,13 @@ cbuffer ObjectCB : register(b1)
 };
 
 
-PSInput VSMain(float4 position : POSITION, float2 uv : TEXCOORD0)
+PSInput VSMain(float4 position : POSITION, float2 uv : TEXCOORD0, uint iid : SV_InstanceID)
 {
+    InstanceData inst = gInstances[iid];
+    float4x4 W = inst.World;
     PSInput result;
 
-    result.position = mul(position, World);
+    result.position = mul(position, W);
     result.position = mul(result.position, View);
     result.position = mul(result.position, Proj);
     result.uv = uv;
