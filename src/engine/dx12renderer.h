@@ -1,6 +1,8 @@
+#pragma once
 #include "renderer.h"
 #include <dxgi1_6.h>
 #include <d3d12.h>
+#include <map>
 #include <wrl.h>
 using namespace Microsoft::WRL;
 
@@ -8,7 +10,9 @@ class DX12Renderer : public Renderer {
 
     public:
         void initialize(RenderInitData initData) override;
+
         
+
         ComPtr<ID3D12CommandList> populateCommandList();
         void postRenderSynch();
         void present();
@@ -52,6 +56,8 @@ class DX12Renderer : public Renderer {
         void createDeviceAndSwapChain();
         void createDescriptorHeaps();
         void createPipelineStates();
+        void createPipelineStatesNew();
+        void createCommandLists();
         void WaitForPreviousFrame();
         void GetHardwareAdapter(IDXGIFactory1 *pFactory, IDXGIAdapter1 **ppAdapter, bool requestHighPerformanceAdapter);
         void uploadBufferData(size_t size, void *data, ComPtr<ID3D12Resource> targetBuffer, D3D12_RESOURCE_STATES finalState);
@@ -88,6 +94,8 @@ class DX12Renderer : public Renderer {
         ComPtr<ID3D12Resource> m_frameCB;
         ComPtr<ID3D12Resource> m_objectCB;
         ComPtr<ID3D12Resource> m_materialCB;
+
+        std::map<std::string, ComPtr<ID3D12PipelineState>> psos;
         
         UINT m_nextSrvIndex = 0;
         ComPtr<ID3D12Resource> m_instanceDefault;
@@ -101,7 +109,6 @@ class DX12Renderer : public Renderer {
         MaterialCBData* materialCBMapped = nullptr;
         UINT m_rtvDescriptorSize;
         ComPtr<ID3D12Resource> m_depthTex;
-
         
         UINT m_srvDescriptorSize = 0;
 

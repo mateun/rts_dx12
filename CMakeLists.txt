@@ -7,7 +7,7 @@ find_package(D3D12MemoryAllocator CONFIG REQUIRED)
 find_package(directxtk12 CONFIG REQUIRED)
 find_package(directx-headers CONFIG REQUIRED)
 
-add_executable(dx12_rts src/engine/main.cpp src/engine/window.cpp src/engine/dx12renderer.cpp)
+add_executable(dx12_rts src/engine/main.cpp src/game/rts_game.cpp src/engine/window.cpp src/engine/dx12renderer.cpp)
 target_compile_definitions(dx12_rts PRIVATE UNICODE)
 if (CMAKE_EXPORT_COMPILE_COMMANDS)
     target_compile_definitions(dx12_rts PRIVATE RUNNING_FROM_IDE=1)

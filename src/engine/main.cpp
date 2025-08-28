@@ -14,6 +14,8 @@ using namespace Microsoft::WRL;
 #include "appwindow.h"
 #include <string>
 #include "dx12renderer.h"
+#include "engine.h"
+#include "game.h"
 
 // struct Texture;
 // ComPtr<ID3D12GraphicsCommandList> createOneTimeCommandList();
@@ -863,26 +865,12 @@ using namespace Microsoft::WRL;
 // }
 
 int main(int argc, char** args) {
-    bool ide = false;
-    if (argc >=  2 && strcmp(args[1],"ide") == 0) {
-        ide = true;
-    }
+   
     auto window = createAppWindow(800, 600, false);
 
-    // init(window, ide);
-
-
+    auto game = getGame();
+    auto initData = game->getInitData({argc, args}, window);
     auto renderer = DX12Renderer();
-    // TODO: the initData must be provided by the game!
-    // Only the game knows what it "needs" in terms of rendering, 
-    // which shaders, how many textures etc.
-    // For now we just hardcode some defaults:
-    auto initData = RenderInitData();
-    initData.ide = ide;
-    initData.hwnd = window.hwnd;
-    initData.screenWidth = window.width;
-    initData.screenHeight = window.height;
-    initData.numFrames = 3;
     renderer.initialize(initData);
 
     auto running = true;

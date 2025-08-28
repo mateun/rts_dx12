@@ -6,6 +6,7 @@
 #include <dxgidebug.h>
 #include "appwindow.h"
 #include <string>
+#include <map>
 #include <stdexcept>
 
 static_assert(sizeof(void*) == 8, "x64 only");
@@ -26,7 +27,6 @@ D3D12_GPU_DESCRIPTOR_HANDLE DX12Renderer::gpuDescriptorHandle(UINT idx)  {
         m_srvHeap->GetGPUDescriptorHandleForHeapStart(), idx, m_srvDescriptorSize);
 }
 
-
 void DX12Renderer::ThrowIfFailed(HRESULT result) 
 {
     if (FAILED(result))
@@ -40,20 +40,185 @@ void DX12Renderer::initialize(RenderInitData initData)
     createDeviceAndSwapChain();
     createDescriptorHeaps();
     createPipelineStates();
+    createCommandLists();
     
+}
+
+void DX12Renderer::createCommandLists() {
+// Create a command list
+    ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
+                g_alloc[m_frameIndex].Get(), m_pipelineState.Get(), IID_PPV_ARGS(m_commandList.GetAddressOf())));
+    // List must be closed:
+    ThrowIfFailed(m_commandList->Close());
+
+    // Create some sync primitives:
+    ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)));
+    m_fenceValue = 1;
+    m_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+    if (!m_fenceEvent) ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
+
+    // TODO move quad vertex buffer to a separate class e.g. GeometryFactory or similar. 
+    // It can not be part of the render engine. 
+    // The renderer is only concerned to render given geometry as quickly as possible.
+    // It has no business in creating geometry.
+    // // Vertex Buffer
+    // {
+    //     float vertices[] = {
+    //          -0.5f, -0.5f, 0.0f, 0.0f, 0.0f,
+    //         0.5f, -0.5f, 0.0f, 1.0f, 0.0f,
+    //         -0.5f,  0.5f, 0.0f, 0.0f, 1.0f,
+    //         0.5, 0.5, 0.0f, 1.0f, 1.0f
+
+    //     };
+    //     const uint32_t vbSize = sizeof(vertices);
+
+    //     uint32_t quadIndices[] = {
+    //             2,1,0, 
+    //             3,1,2
+
+    //     };
+
+    //     auto desc = CD3DX12_RESOURCE_DESC::Buffer(vbSize);
+    //     CD3DX12_HEAP_PROPERTIES hp(D3D12_HEAP_TYPE_DEFAULT);
+    //     ThrowIfFailed(m_device->CreateCommittedResource(&hp, 
+    //                 D3D12_HEAP_FLAG_NONE, 
+    //                 &desc,
+    //                 D3D12_RESOURCE_STATE_COMMON,
+    //                 nullptr,
+    //                 IID_PPV_ARGS(m_vertexBuffer.GetAddressOf())));
+
+    //     desc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(quadIndices));
+    //     ThrowIfFailed(m_device->CreateCommittedResource(&hp, 
+    //                 D3D12_HEAP_FLAG_NONE, 
+    //                 &desc,
+    //                 D3D12_RESOURCE_STATE_COMMON,
+    //                 nullptr,
+    //                 IID_PPV_ARGS(m_indexBuffer.GetAddressOf())));
+        
+    //     uploadBufferData(vbSize, vertices, m_vertexBuffer, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+    //     uploadBufferData(sizeof(quadIndices), quadIndices, m_indexBuffer, D3D12_RESOURCE_STATE_INDEX_BUFFER);
+    //     m_vertexBufferView.BufferLocation = m_vertexBuffer->GetGPUVirtualAddress();
+    //     m_vertexBufferView.SizeInBytes = vbSize;
+    //     m_vertexBufferView.StrideInBytes = sizeof(float) * 5;
+    //     m_indexBufferView.BufferLocation = m_indexBuffer->GetGPUVirtualAddress();
+    //     m_indexBufferView.SizeInBytes = sizeof(quadIndices);
+    //     m_indexBufferView.Format = DXGI_FORMAT_R32_UINT;
+
+
+
+        
+
+    // }
+
+    m_viewport.TopLeftX = 0.0f;
+    m_viewport.TopLeftY = 0.0f;
+    m_viewport.Width    = static_cast<float>(initData.screenWidth);
+    m_viewport.Height   = static_cast<float>(initData.screenHeight);
+    m_viewport.MinDepth = 0.0f;
+    m_viewport.MaxDepth = 1.0f;
+
+    m_scissorRect.left   = 0;
+    m_scissorRect.top    = 0;
+    m_scissorRect.right  = static_cast<LONG>(initData.screenWidth);
+    m_scissorRect.bottom = static_cast<LONG>(initData.screenHeight);
+
+    // TODO: textures must of course also be created outside of the renderer.
+    // They must be provided by the game and also the game decides, where to put them. 
+    // At least, logically put them. The actual physical upload and slotting in the 
+    // SRV heap is done by the render-engine.
+    // {
+    //     auto texturePath = L"../hero.png";
+    //     if (initData.ide) texturePath = L"../../hero.png";
+    //     m_heroTexture = loadTextureFromFile(texturePath);
+
+    //     texturePath = L"../enemy1.png";
+    //     if (initData.ide) texturePath = L"../../enemy1.png";
+    //     m_enemy1Texture = loadTextureFromFile(texturePath);
+
+    //     texturePath = L"../enemy2.png";
+    //     if (initData.ide) texturePath = L"../../enemy2.png";
+    //     m_enemy2Texture = loadTextureFromFile(texturePath);
+    // }
+    
+    WaitForPreviousFrame();
+    
+
+}
+
+void DX12Renderer::createPipelineStatesNew() {
+
+    
+    for (auto ps : initData.pipelineStates) {
+        ComPtr<ID3DBlob> vertexShader;
+        ComPtr<ID3DBlob> pixelShader;
+
+        #ifndef NDEBUG
+        // Enable better shader debugging with the graphics debugging tools.
+        UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+        #else
+            UINT compileFlags = 0;
+        #endif
+        
+        auto shaderPath = ps.shader;
+        
+        ThrowIfFailed(D3DCompileFromFile(shaderPath.c_str(), nullptr, nullptr, "VSMain", "vs_5_0", 
+                                                compileFlags, 0, &vertexShader, nullptr));
+        ThrowIfFailed(D3DCompileFromFile(shaderPath.c_str(), nullptr, nullptr, "PSMain", "ps_5_0", 
+                                                compileFlags, 0, &pixelShader, nullptr));
+
+        auto dx12InputLayout = ps.inputLayout.asDX12InputLayout();
+
+        D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+        psoDesc.InputLayout = { dx12InputLayout.data(), (uint32_t)dx12InputLayout.size()};
+        psoDesc.pRootSignature = m_rootSignature.Get();
+        psoDesc.VS = {(uint8_t*)vertexShader->GetBufferPointer(), vertexShader->GetBufferSize()};
+        psoDesc.PS = {(uint8_t*)pixelShader->GetBufferPointer(), pixelShader->GetBufferSize()};
+        psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+        psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+        auto& rt0 = psoDesc.BlendState.RenderTarget[0];
+        rt0.BlendEnable = TRUE;
+        rt0.SrcBlend = D3D12_BLEND_SRC_ALPHA;
+        rt0.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+        rt0.BlendOp = D3D12_BLEND_OP_ADD;
+        rt0.SrcBlendAlpha = D3D12_BLEND_ONE;
+        rt0.DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;
+        rt0.BlendOpAlpha = D3D12_BLEND_OP_ADD;
+        rt0.RenderTargetWriteMask = D3D12_COLOR_WRITE_ENABLE_ALL;
+        psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+        psoDesc.DSVFormat = depthFormat;          
+        psoDesc.DepthStencilState.DepthEnable = TRUE;
+        psoDesc.DepthStencilState.StencilEnable = FALSE;
+        psoDesc.SampleMask = UINT_MAX;
+        psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+        psoDesc.NumRenderTargets = 1;
+        psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+        psoDesc.SampleDesc.Count = 1;
+        ComPtr<ID3D12PipelineState> pipelineState;
+        ThrowIfFailed(m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(pipelineState.GetAddressOf())));
+        psos[ps.id] = pipelineState;
+                                
+    }
+       
 }
 
 void DX12Renderer::createPipelineStates() 
 {
 
+    createPipelineStatesNew();
+    return;
+
     ComPtr<ID3DBlob> vertexShader;
     ComPtr<ID3DBlob> pixelShader;
-#if defined(_DEBUG)
+ 
+#ifndef NDEBUG
     // Enable better shader debugging with the graphics debugging tools.
     UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
 #else
     UINT compileFlags = 0;
 #endif
+
+
+
     auto shaderPath = L"../shaders.hlsl";
     if (initData.ide) shaderPath = L"../../shaders.hlsl";
 
@@ -97,94 +262,7 @@ void DX12Renderer::createPipelineStates()
     psoDesc.SampleDesc.Count = 1;
     ThrowIfFailed(m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(m_pipelineState.GetAddressOf())));
 
-    // Create a command list
-    ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT,
-                g_alloc[m_frameIndex].Get(), m_pipelineState.Get(), IID_PPV_ARGS(m_commandList.GetAddressOf())));
-    // List must be closed:
-    ThrowIfFailed(m_commandList->Close());
-
-    // Create some sync primitives:
-    ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)));
-    m_fenceValue = 1;
-    m_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-    if (!m_fenceEvent) ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
-
-    // Vertex Buffer
-    {
-        float vertices[] = {
-             -0.5f, -0.5f, 0.0f, 0.0f, 0.0f,
-            0.5f, -0.5f, 0.0f, 1.0f, 0.0f,
-            -0.5f,  0.5f, 0.0f, 0.0f, 1.0f,
-            0.5, 0.5, 0.0f, 1.0f, 1.0f
-
-        };
-        const uint32_t vbSize = sizeof(vertices);
-
-        uint32_t quadIndices[] = {
-                2,1,0, 
-                3,1,2
-
-        };
-
-        auto desc = CD3DX12_RESOURCE_DESC::Buffer(vbSize);
-        CD3DX12_HEAP_PROPERTIES hp(D3D12_HEAP_TYPE_DEFAULT);
-        ThrowIfFailed(m_device->CreateCommittedResource(&hp, 
-                    D3D12_HEAP_FLAG_NONE, 
-                    &desc,
-                    D3D12_RESOURCE_STATE_COPY_DEST,
-                    nullptr,
-                    IID_PPV_ARGS(m_vertexBuffer.GetAddressOf())));
-
-        desc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(quadIndices));
-        ThrowIfFailed(m_device->CreateCommittedResource(&hp, 
-                    D3D12_HEAP_FLAG_NONE, 
-                    &desc,
-                    D3D12_RESOURCE_STATE_COPY_DEST,
-                    nullptr,
-                    IID_PPV_ARGS(m_indexBuffer.GetAddressOf())));
-        
-        uploadBufferData(vbSize, vertices, m_vertexBuffer, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
-        uploadBufferData(sizeof(quadIndices), quadIndices, m_indexBuffer, D3D12_RESOURCE_STATE_INDEX_BUFFER);
-        m_vertexBufferView.BufferLocation = m_vertexBuffer->GetGPUVirtualAddress();
-        m_vertexBufferView.SizeInBytes = vbSize;
-        m_vertexBufferView.StrideInBytes = sizeof(float) * 5;
-        m_indexBufferView.BufferLocation = m_indexBuffer->GetGPUVirtualAddress();
-        m_indexBufferView.SizeInBytes = sizeof(quadIndices);
-        m_indexBufferView.Format = DXGI_FORMAT_R32_UINT;
-
-
-
-        
-
-    }
-
-    m_viewport.TopLeftX = 0.0f;
-    m_viewport.TopLeftY = 0.0f;
-    m_viewport.Width    = static_cast<float>(initData.screenWidth);
-    m_viewport.Height   = static_cast<float>(initData.screenHeight);
-    m_viewport.MinDepth = 0.0f;
-    m_viewport.MaxDepth = 1.0f;
-
-    m_scissorRect.left   = 0;
-    m_scissorRect.top    = 0;
-    m_scissorRect.right  = static_cast<LONG>(initData.screenWidth);
-    m_scissorRect.bottom = static_cast<LONG>(initData.screenHeight);
-
-    {
-        auto texturePath = L"../hero.png";
-        if (initData.ide) texturePath = L"../../hero.png";
-        m_heroTexture = loadTextureFromFile(texturePath);
-
-        texturePath = L"../enemy1.png";
-        if (initData.ide) texturePath = L"../../enemy1.png";
-        m_enemy1Texture = loadTextureFromFile(texturePath);
-
-        texturePath = L"../enemy2.png";
-        if (initData.ide) texturePath = L"../../enemy2.png";
-        m_enemy2Texture = loadTextureFromFile(texturePath);
-    }
     
-    WaitForPreviousFrame();
 }
 
 void DX12Renderer::WaitForPreviousFrame()
@@ -306,7 +384,7 @@ void DX12Renderer::createDescriptorHeaps()
                     &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
                     D3D12_HEAP_FLAG_NONE,
                     &desc,
-                    D3D12_RESOURCE_STATE_COPY_DEST,   // start as COPY_DEST
+                    D3D12_RESOURCE_STATE_COMMON,   
                     nullptr,
                     IID_PPV_ARGS(&m_instanceDefault)));
             }
@@ -580,16 +658,12 @@ DX12Renderer::Texture DX12Renderer::loadTextureFromFile(const std::wstring& file
 
     ComPtr<ID3D12Resource> texture;
     ThrowIfFailed(m_device->CreateCommittedResource(
-    &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-    D3D12_HEAP_FLAG_NONE,
-    &texDesc,
-    D3D12_RESOURCE_STATE_COPY_DEST,
-    nullptr,
-    IID_PPV_ARGS(&texture)));
-
-    // std::vector<D3D12_SUBRESOURCE_DATA> subresources;
-    // ThrowIfFailed(DirectX::PrepareUpload(m_device.Get(),
-    //     image.GetImages(), image.GetImageCount(), metadata, subresources));
+        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+        D3D12_HEAP_FLAG_NONE,
+        &texDesc,
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        nullptr,
+        IID_PPV_ARGS(&texture)));
    
     const UINT64 uploadBufferSize = GetRequiredIntermediateSize(texture.Get(), 0, 1);
 
@@ -717,6 +791,7 @@ void DX12Renderer::shutdown() {
 
 #if defined(_DEBUG)
     #include <dxgidebug.h>
+#include "renderer.h"
     {
         ComPtr<IDXGIDebug1> dxgiDebug;
         if (SUCCEEDED(DXGIGetDebugInterface1(0, IID_PPV_ARGS(&dxgiDebug)))) {
@@ -870,5 +945,46 @@ ComPtr<ID3D12CommandList> DX12Renderer::populateCommandList() {
 
     return m_commandList;
 
+}
+
+
+
+InputLayout &InputLayout::addElement(InputLayoutElement element)
+{
+    elements.push_back(element);
+    return *this;
+}
+
+std::vector<D3D12_INPUT_ELEMENT_DESC> InputLayout::asDX12InputLayout()
+{
+    std::vector<D3D12_INPUT_ELEMENT_DESC> descs;
+
+    uint32_t oldOffset = 0;
+    uint32_t newOffset = 0;
+    std::vector<std::string> semanticNames;
+    std::vector<DXGI_FORMAT> formats;
+    std::vector<uint32_t> offsets;
+    for (auto& elem: elements) {
+        oldOffset = newOffset;
+        switch (elem.type) {
+            case InputElementType::POSITION: semanticNames.push_back("POSITION"); formats.push_back(DXGI_FORMAT_R32G32B32_FLOAT); newOffset += 12; offsets.push_back(oldOffset); break;
+            case InputElementType::UV: semanticNames.push_back("TEXCOORD"); formats.push_back(DXGI_FORMAT_R32G32_FLOAT); newOffset += 8; offsets.push_back(oldOffset); break;
+            case InputElementType::NORMAL: semanticNames.push_back("NORMAL"); formats.push_back(DXGI_FORMAT_R32G32B32_FLOAT); newOffset += 12; offsets.push_back(oldOffset); break;
+        };
+    }
+
+    int counter=0;
+    for (auto& elem : elements) {
+        DXGI_FORMAT format;
+        char* name = new char(semanticNames[counter].size() + 1);
+        strcpy(name, semanticNames[counter].c_str());
+        name[strlen(name)] = '\0';
+        descs.push_back(
+            
+            {name, 0, formats[counter], 0, offsets[counter], D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
+        );
+        counter++;
+    }
+    return descs;
 }
 

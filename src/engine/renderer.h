@@ -1,15 +1,52 @@
-
+#pragma once
 #include <vector>
 #include <string>
 #include <Windows.h>
 #include <DirectXMath.h>
+#include <d3d12.h>
+
+enum class InputElementType
+{
+    POSITION,
+    UV,
+    NORMAL
+
+};
+
+struct InputLayoutElement {
+    InputElementType type;
+};
+
+class InputLayout 
+{
+    public:
+        InputLayout& addElement(InputLayoutElement element);
+        std::vector<D3D12_INPUT_ELEMENT_DESC> asDX12InputLayout();
+
+    private:
+        std::vector<InputLayoutElement> elements;
+
+};
+
+// PipelineState contains 
+// all needed shaders and 
+// rasterstates etc.
+struct PipelineState {
+
+    // This is the id which we will refer to in the FrameData,
+    // so the renderer knows which PSO to bind:
+    std::string id;         
+    std::wstring shader;
+    bool useDepthBuffer = true;
+    bool useStencilBuffer = false;
+    bool wireframe = false;
+    InputLayout inputLayout;
+
+};
 
 struct RenderInitData {
 
-    std::vector<std::string> shaderFileNames;
-    // TODO not sure if this really makes sense on init level?!
-    // Cameras may be multiple and they change during gameplay?!
-    DirectX::XMFLOAT4X4 viewMatrix;
+    std::vector<PipelineState> pipelineStates;
     uint32_t numFrames = 0;
     uint32_t screenWidth = 0;
     uint32_t screenHeight = 0;
@@ -17,7 +54,13 @@ struct RenderInitData {
     HWND hwnd;
     bool ide = false;
 
+};
 
+struct FrameData {
+    DirectX::XMFLOAT4X4 viewMatrix;
+    DirectX::XMFLOAT4X4 projectionMatrix;
+
+    // TODO actual object data incl. transforms, materials, skinning data
 
 };
 
