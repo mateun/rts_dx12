@@ -883,7 +883,8 @@ int main(int argc, char** args) {
             }
         }
 
-        ComPtr<ID3D12CommandList> cmdList = renderer.populateCommandList();
+        auto frameData = game->getFrameData();
+        ComPtr<ID3D12CommandList> cmdList = renderer.populateCommandList(frameData);
         renderer.executeCommandList(cmdList);
 
         renderer.present();

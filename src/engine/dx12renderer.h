@@ -13,7 +13,7 @@ class DX12Renderer : public Renderer {
 
         
 
-        ComPtr<ID3D12CommandList> populateCommandList();
+        ComPtr<ID3D12CommandList> populateCommandList(FrameData frameData);
         void postRenderSynch();
         void present();
         void executeCommandList(ComPtr<ID3D12CommandList> commandList);
@@ -58,6 +58,8 @@ class DX12Renderer : public Renderer {
         void createPipelineStates();
         void createPipelineStatesNew();
         void createCommandLists();
+        void createTextures();
+        void createVertexBuffers();
         void WaitForPreviousFrame();
         void GetHardwareAdapter(IDXGIFactory1 *pFactory, IDXGIAdapter1 **ppAdapter, bool requestHighPerformanceAdapter);
         void uploadBufferData(size_t size, void *data, ComPtr<ID3D12Resource> targetBuffer, D3D12_RESOURCE_STATES finalState);
@@ -109,6 +111,12 @@ class DX12Renderer : public Renderer {
         MaterialCBData* materialCBMapped = nullptr;
         UINT m_rtvDescriptorSize;
         ComPtr<ID3D12Resource> m_depthTex;
+
+        // Stores textures with an id as defined by 
+        // the game. 
+        // This allows the game to reference the
+        // textures during frame rendering.
+        std::map<std::string, Texture> textureMap;
         
         UINT m_srvDescriptorSize = 0;
 
@@ -124,11 +132,5 @@ class DX12Renderer : public Renderer {
         ComPtr<ID3D12Fence> m_fence;
         UINT64 m_fenceValue;
 
-
-        // TODO remove. 
-        // Only temp debug, no textures live in the engine!
-        Texture m_heroTexture = {};
-        Texture m_enemy1Texture = {};
-        Texture m_enemy2Texture = {};
 
 };

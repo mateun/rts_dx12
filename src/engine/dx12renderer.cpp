@@ -41,7 +41,54 @@ void DX12Renderer::initialize(RenderInitData initData)
     createDescriptorHeaps();
     createPipelineStates();
     createCommandLists();
+    createTextures();
+    createVertexBuffers();
     
+}
+
+void DX12Renderer::createVertexBuffers() 
+{
+    for (auto md : initData.meshDescriptors)
+    {
+        
+        uint32_t vbSize = md.geometry.vertices.size() * sizeof(float);
+        auto desc = CD3DX12_RESOURCE_DESC::Buffer(vbSize);
+        CD3DX12_HEAP_PROPERTIES hp(D3D12_HEAP_TYPE_DEFAULT);
+        ThrowIfFailed(m_device->CreateCommittedResource(&hp, 
+                    D3D12_HEAP_FLAG_NONE, 
+                    &desc,
+                    D3D12_RESOURCE_STATE_COMMON,
+                    nullptr,
+                    IID_PPV_ARGS(m_vertexBuffer.GetAddressOf())));
+
+        uint32_t ibSize = md.geometry.indices.size() * sizeof(uint32_t);
+        desc = CD3DX12_RESOURCE_DESC::Buffer(sizeof(ibSize));
+        ThrowIfFailed(m_device->CreateCommittedResource(&hp, 
+                    D3D12_HEAP_FLAG_NONE, 
+                    &desc,
+                    D3D12_RESOURCE_STATE_COMMON,
+                    nullptr,
+                    IID_PPV_ARGS(m_indexBuffer.GetAddressOf())));
+        
+        uploadBufferData(vbSize, md.geometry.vertices.data(), m_vertexBuffer, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+        uploadBufferData(ibSize, md.geometry.indices.data(), m_indexBuffer, D3D12_RESOURCE_STATE_INDEX_BUFFER);
+        m_vertexBufferView.BufferLocation = m_vertexBuffer->GetGPUVirtualAddress();
+        m_vertexBufferView.SizeInBytes = vbSize;
+        m_vertexBufferView.StrideInBytes = sizeof(float) * 5;
+        m_indexBufferView.BufferLocation = m_indexBuffer->GetGPUVirtualAddress();
+        m_indexBufferView.SizeInBytes = ibSize;
+        m_indexBufferView.Format = DXGI_FORMAT_R32_UINT;
+    }
+
+}
+
+void DX12Renderer::createTextures() {
+
+    for (auto td : initData.textureDescriptors) {
+        auto texture = loadTextureFromFile(td.filePath);
+        textureMap[td.id] = texture;
+    }
+
 }
 
 void DX12Renderer::createCommandLists() {
@@ -709,9 +756,10 @@ DX12Renderer::Texture DX12Renderer::loadTextureFromFile(const std::wstring& file
 
     auto slot = m_nextSrvIndex++;
 
-    // Check for heap overflow ourselves:
-    if (m_nextSrvIndex >= m_srvHeap->GetDesc().NumDescriptors)
-        throw std::runtime_error("SRV heap full");
+    // We only have place for 16 textures, 
+    // check overflow:
+    if (m_nextSrvIndex >= 16)
+        throw std::runtime_error("SRV texture heap full");
 
     m_device->CreateShaderResourceView(texture.Get(), &srvDesc, cpuDescriptorHandle(slot));
 
@@ -838,7 +886,7 @@ void DX12Renderer::executeCommandList(ComPtr<ID3D12CommandList> commandList)
     m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 }
 
-ComPtr<ID3D12CommandList> DX12Renderer::populateCommandList() {
+ComPtr<ID3D12CommandList> DX12Renderer::populateCommandList(FrameData frameData) {
 
     const UINT idx = m_frameIndex;                   // current back buffer
     const UINT64 last = g_frameFence[idx];
@@ -847,15 +895,22 @@ ComPtr<ID3D12CommandList> DX12Renderer::populateCommandList() {
         WaitForSingleObject(m_fenceEvent, INFINITE);
     }
 
-    DirectX::XMMATRIX V = DirectX::XMMatrixIdentity();
-    DirectX::XMMATRIX P = DirectX::XMMatrixOrthographicOffCenterLH(0, 800, 0, 600, 0.1, 100);
-    DirectX::XMMATRIX S = DirectX::XMMatrixScaling(64, 64, 1);
-    DirectX::XMMATRIX W = S * DirectX::XMMatrixTranslation(32, 200, 0.2);
 
-    XMStoreFloat4x4(&mapped->View,    XMMatrixTranspose(V));
-    XMStoreFloat4x4(&mapped->Proj,    (P));
-    XMStoreFloat4x4(&objectCBMapped->World, W);
-    XMStoreFloat4(&materialCBMapped->tint, DirectX::XMVectorSet(1, 0, 1, 1));
+
+
+    // DirectX::XMMATRIX V = DirectX::XMMatrixIdentity();
+    // DirectX::XMMATRIX P = DirectX::XMMatrixOrthographicOffCenterLH(0, 800, 0, 600, 0.1, 100);
+    // DirectX::XMMATRIX S = DirectX::XMMatrixScaling(64, 64, 1);
+    // DirectX::XMMATRIX W = S * DirectX::XMMatrixTranslation(32, 200, 0.2);
+
+    // XMStoreFloat4x4(&mapped->View,    XMMatrixTranspose(V));
+    // XMStoreFloat4x4(&mapped->Proj,    (P));
+    // XMStoreFloat4x4(&objectCBMapped->World, W);
+    // XMStoreFloat4(&materialCBMapped->tint, DirectX::XMVectorSet(1, 0, 1, 1));
+
+    mapped->View = frameData.viewMatrix;
+    mapped->Proj = frameData.projectionMatrix;
+    
 
     // Reset before refill. Allocator and list itself:
     ThrowIfFailed(g_alloc[idx]->Reset());
@@ -863,52 +918,59 @@ ComPtr<ID3D12CommandList> DX12Renderer::populateCommandList() {
 
     m_commandList->SetGraphicsRootSignature(m_rootSignature.Get());
     m_commandList->SetGraphicsRootConstantBufferView(0, m_frameCB->GetGPUVirtualAddress());
-    DirectX::XMFLOAT4X4 Wf;
-    XMStoreFloat4x4(&Wf, W);
-    m_commandList->SetGraphicsRoot32BitConstants(1, 16, &Wf, 0);
-    m_commandList->SetGraphicsRootConstantBufferView(2, m_materialCB->GetGPUVirtualAddress());
 
     ID3D12DescriptorHeap* heaps[] = { m_srvHeap.Get(), m_samplerHeap.Get() };
     m_commandList->SetDescriptorHeaps(_countof(heaps), heaps);
 
-    // Diffuse texture SRV table (root param 2) -> points at t0 in m_srvHeap
-    m_commandList->SetGraphicsRootDescriptorTable(3, gpuDescriptorHandle(0));
-
     // Sampler table (root param 3) -> points at s0 in m_samplerHeap
     auto sampGPU = m_samplerHeap->GetGPUDescriptorHandleForHeapStart();
-    
     m_commandList->SetGraphicsRootDescriptorTable(4, sampGPU);
+    
+
+    for (auto obj : frameData.objectRenderData) {
+        objectCBMapped->World = obj.worldMatrix;
+        XMStoreFloat4(&materialCBMapped->tint, DirectX::XMVectorSet(1, 0, 1, 1));   
+        m_commandList->SetGraphicsRoot32BitConstants(1, 16, &obj.worldMatrix, 0);
+        m_commandList->SetGraphicsRootConstantBufferView(2, m_materialCB->GetGPUVirtualAddress());
+
+        // Diffuse texture SRV table (root param 2) -> points at t0 in m_srvHeap
+        auto texture = textureMap[obj.textureId];
+        m_commandList->SetGraphicsRootDescriptorTable(3, gpuDescriptorHandle(texture.srvIndex));
+    }
+
+ 
+
 
     // Fill instance data
     // 1) Fill per-frame upload buffer
-    uint32_t instanceCount = 10000;
-    auto* inst = reinterpret_cast<InstanceDataCPU*>(m_instanceUploadMapped[m_frameIndex]);
-    for (UINT i = 0; i < instanceCount; ++i) {
-        DirectX::XMMATRIX W = S * DirectX::XMMatrixTranslation(32 + (i * 67), 200, 0.2f);
-        DirectX::XMStoreFloat4x4(&inst[i].World, W); // transpose if your HLSL expects it
-    }
-    UINT64 copyBytes = instanceCount * sizeof(InstanceDataCPU);
+    // uint32_t instanceCount = 10000;
+    // auto* inst = reinterpret_cast<InstanceDataCPU*>(m_instanceUploadMapped[m_frameIndex]);
+    // for (UINT i = 0; i < instanceCount; ++i) {
+    //     DirectX::XMMATRIX W = S * DirectX::XMMatrixTranslation(32 + (i * 67), 200, 0.2f);
+    //     DirectX::XMStoreFloat4x4(&inst[i].World, W); // transpose if your HLSL expects it
+    // }
+    // UINT64 copyBytes = instanceCount * sizeof(InstanceDataCPU);
 
-    // 2) Transition DEFAULT to COPY_DEST, do the copy, transition to SRV
-    {
-        auto toCopy = CD3DX12_RESOURCE_BARRIER::Transition(
-            m_instanceDefault.Get(),
-            D3D12_RESOURCE_STATE_GENERIC_READ,
-            D3D12_RESOURCE_STATE_COPY_DEST);
-        m_commandList->ResourceBarrier(1, &toCopy);
+    // // 2) Transition DEFAULT to COPY_DEST, do the copy, transition to SRV
+    // {
+    //     auto toCopy = CD3DX12_RESOURCE_BARRIER::Transition(
+    //         m_instanceDefault.Get(),
+    //         D3D12_RESOURCE_STATE_GENERIC_READ,
+    //         D3D12_RESOURCE_STATE_COPY_DEST);
+    //     m_commandList->ResourceBarrier(1, &toCopy);
 
-        m_commandList->CopyBufferRegion(
-            m_instanceDefault.Get(), 0,
-            m_instanceUploadBuffer[m_frameIndex].Get(), 0,
-            copyBytes);
+    //     m_commandList->CopyBufferRegion(
+    //         m_instanceDefault.Get(), 0,
+    //         m_instanceUploadBuffer[m_frameIndex].Get(), 0,
+    //         copyBytes);
 
-        auto toSRV = CD3DX12_RESOURCE_BARRIER::Transition(
-            m_instanceDefault.Get(),
-            D3D12_RESOURCE_STATE_COPY_DEST,
-            D3D12_RESOURCE_STATE_GENERIC_READ); 
-        m_commandList->ResourceBarrier(1, &toSRV);
-        m_commandList->SetGraphicsRootDescriptorTable(5, gpuDescriptorHandle(16));
-    }
+    //     auto toSRV = CD3DX12_RESOURCE_BARRIER::Transition(
+    //         m_instanceDefault.Get(),
+    //         D3D12_RESOURCE_STATE_COPY_DEST,
+    //         D3D12_RESOURCE_STATE_GENERIC_READ); 
+    //     m_commandList->ResourceBarrier(1, &toSRV);
+    //     m_commandList->SetGraphicsRootDescriptorTable(5, gpuDescriptorHandle(16));
+    // }
     
 
     // end instance data
@@ -932,10 +994,7 @@ ComPtr<ID3D12CommandList> DX12Renderer::populateCommandList() {
     m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     m_commandList->IASetVertexBuffers(0, 1, &m_vertexBufferView);
     m_commandList->IASetIndexBuffer(&m_indexBufferView);
-    m_commandList->DrawIndexedInstanced(6, instanceCount, 0, 0, 0);
-
-
-
+    m_commandList->DrawIndexedInstanced(6, 1, 0, 0, 0);
 
     // Indicate that the back buffer will now be used to present.
     barrier = CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
@@ -962,29 +1021,30 @@ std::vector<D3D12_INPUT_ELEMENT_DESC> InputLayout::asDX12InputLayout()
     uint32_t oldOffset = 0;
     uint32_t newOffset = 0;
     std::vector<std::string> semanticNames;
-    std::vector<DXGI_FORMAT> formats;
-    std::vector<uint32_t> offsets;
+    
     for (auto& elem: elements) {
         oldOffset = newOffset;
-        switch (elem.type) {
-            case InputElementType::POSITION: semanticNames.push_back("POSITION"); formats.push_back(DXGI_FORMAT_R32G32B32_FLOAT); newOffset += 12; offsets.push_back(oldOffset); break;
-            case InputElementType::UV: semanticNames.push_back("TEXCOORD"); formats.push_back(DXGI_FORMAT_R32G32_FLOAT); newOffset += 8; offsets.push_back(oldOffset); break;
-            case InputElementType::NORMAL: semanticNames.push_back("NORMAL"); formats.push_back(DXGI_FORMAT_R32G32B32_FLOAT); newOffset += 12; offsets.push_back(oldOffset); break;
-        };
-    }
-
-    int counter=0;
-    for (auto& elem : elements) {
+        const char* sem = nullptr;
         DXGI_FORMAT format;
-        char* name = new char(semanticNames[counter].size() + 1);
-        strcpy(name, semanticNames[counter].c_str());
-        name[strlen(name)] = '\0';
+        switch (elem.type) {
+            case InputElementType::POSITION: sem = "POSITION"; format = DXGI_FORMAT_R32G32B32_FLOAT; newOffset += 12; break;
+            case InputElementType::UV: sem = "TEXCOORD"; format = DXGI_FORMAT_R32G32_FLOAT; newOffset += 8;  break;
+            case InputElementType::NORMAL: sem  = "NORMAL"; format = DXGI_FORMAT_R32G32B32_FLOAT; newOffset += 12; break;
+        };
+
         descs.push_back(
             
-            {name, 0, formats[counter], 0, offsets[counter], D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
+            {sem, 0, format, 0, oldOffset, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}
         );
-        counter++;
+   
     }
+
+   
+   
+   
+   
+   
+   
     return descs;
 }
 

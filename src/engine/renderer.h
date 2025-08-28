@@ -4,6 +4,7 @@
 #include <Windows.h>
 #include <DirectXMath.h>
 #include <d3d12.h>
+#include "geometry.h"
 
 enum class InputElementType
 {
@@ -25,6 +26,23 @@ class InputLayout
 
     private:
         std::vector<InputLayoutElement> elements;
+
+};
+
+struct MeshDescriptor 
+{
+    std::string id;
+    Geometry geometry;
+
+};
+
+// Describes a texture which is created on the GPU
+// The id is necessary so the renderer can 
+// store an association
+struct TextureDescriptor 
+{
+    std::string id;
+    std::wstring filePath;
 
 };
 
@@ -53,14 +71,24 @@ struct RenderInitData {
     bool fullscreen = false;
     HWND hwnd;
     bool ide = false;
+    std::vector<TextureDescriptor> textureDescriptors;
+    std::vector<MeshDescriptor> meshDescriptors;
+
+};
+
+struct ObjectRenderData 
+{
+    DirectX::XMFLOAT4X4 worldMatrix;
+    std::string textureId;
 
 };
 
 struct FrameData {
     DirectX::XMFLOAT4X4 viewMatrix;
     DirectX::XMFLOAT4X4 projectionMatrix;
+    std::vector<ObjectRenderData> objectRenderData;
 
-    // TODO actual object data incl. transforms, materials, skinning data
+
 
 };
 
