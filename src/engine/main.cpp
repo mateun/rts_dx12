@@ -1,19 +1,18 @@
 
 
-#include <d3d12.h>
+#include <d3d11.h>
 #include <dxgi1_6.h>
 #include <iostream>
 #include <wrl.h>
 using namespace Microsoft::WRL;
 
 #include <DirectXTex.h>      
-#include <D3D12MemAlloc.h>   
-#include <directx/d3dx12.h>
+#include <SimpleMath.h>
 #include <d3dcompiler.h>
 #include <dxgidebug.h>
 #include "appwindow.h"
 #include <string>
-#include "dx12renderer.h"
+#include "dx11renderer.h"
 #include "engine.h"
 #include "game.h"
 
@@ -864,7 +863,38 @@ using namespace Microsoft::WRL;
 
 // }
 
-int main(int argc, char** args) {
+int main(int argc, char ** args) {
+
+     auto window = createAppWindow(800, 600, false);
+
+    auto game = getGame();
+    auto initData = game->getInitData({argc, args}, window);
+    auto renderer = DX11Renderer();
+    renderer.initialize(initData);
+
+    auto running = true;
+    while (running) {
+        auto msgs = pollWindowMessages(window);
+        for (auto &m : msgs) 
+        {
+            if (m == "quit") {
+                running = false;
+            }
+        }
+
+        
+        auto frameData = game->getFrameData();
+        renderer.doFrame({frameData});
+       
+       
+        
+
+    }
+
+}
+
+#ifdef USE_DX12
+int main12(int argc, char** args) {
    
     auto window = createAppWindow(800, 600, false);
 
@@ -884,6 +914,7 @@ int main(int argc, char** args) {
         }
 
         auto frameData = game->getFrameData();
+       
         ComPtr<ID3D12CommandList> cmdList = renderer.populateCommandList(frameData);
         renderer.executeCommandList(cmdList);
 
@@ -895,10 +926,7 @@ int main(int argc, char** args) {
    
     renderer.shutdown();
 
-
-
-
-    //loadAssets();
-
+    return 0;
 
 }
+#endif

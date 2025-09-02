@@ -1,9 +1,8 @@
 {
   "dependencies": [
-    {"name": "directxtex", "features" : ["dx12"]}, 
+    "directxtex", 
     "fmt",
-    "d3d12-memory-allocator",
-    "directxtk12",
+    "directxtk",
     "directx-headers"
   ]
 }

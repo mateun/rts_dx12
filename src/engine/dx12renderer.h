@@ -10,14 +10,12 @@ class DX12Renderer : public Renderer {
 
     public:
         void initialize(RenderInitData initData) override;
-
-        
-
-        ComPtr<ID3D12CommandList> populateCommandList(FrameData frameData);
+        void doFrame(FrameSubmission frameData) override;
         void postRenderSynch();
         void present();
-        void executeCommandList(ComPtr<ID3D12CommandList> commandList);
         void shutdown();
+        void executeCommandList(ComPtr<ID3D12CommandList> commandList);
+        ComPtr<ID3D12CommandList> populateCommandList(FrameSubmission frameData);
         
     private:
         
@@ -31,6 +29,15 @@ class DX12Renderer : public Renderer {
             uint32_t srvIndex = 0;
         };
 
+        struct Mesh {
+            D3D12_VERTEX_BUFFER_VIEW vbView;
+            D3D12_INDEX_BUFFER_VIEW ibView;
+            ComPtr<ID3D12Resource> vertexBuffer;
+            ComPtr<ID3D12Resource> indexBuffer;
+            uint64_t indexCount;
+
+        };
+
         struct alignas(256) MaterialCBData {
             DirectX::XMFLOAT4 tint;
 
@@ -40,7 +47,7 @@ class DX12Renderer : public Renderer {
             DirectX::XMFLOAT4X4 World;
         };
 
-        struct alignas(256) FrameCBData {  // alignas keeps VA aligned for safety
+        struct alignas(256) CameraCBData {  // alignas keeps VA aligned for safety
                 DirectX::XMFLOAT4X4 View;
                 DirectX::XMFLOAT4X4 Proj;
                 // padding happens naturally up to 256 bytes
@@ -55,7 +62,6 @@ class DX12Renderer : public Renderer {
         void ThrowIfFailed(HRESULT result);
         void createDeviceAndSwapChain();
         void createDescriptorHeaps();
-        void createPipelineStates();
         void createPipelineStatesNew();
         void createCommandLists();
         void createTextures();
@@ -104,10 +110,8 @@ class DX12Renderer : public Renderer {
         static const UINT MaxInstances = 50000;
         const UINT instBytes = MaxInstances * sizeof(InstanceDataCPU);
         
-
         DXGI_FORMAT depthFormat = DXGI_FORMAT_D32_FLOAT; // depth only
-        FrameCBData* mapped = nullptr;
-        ObjectCBData* objectCBMapped = nullptr;
+        std::vector<CameraCBData> mappedCameraCB;
         MaterialCBData* materialCBMapped = nullptr;
         UINT m_rtvDescriptorSize;
         ComPtr<ID3D12Resource> m_depthTex;
@@ -117,6 +121,8 @@ class DX12Renderer : public Renderer {
         // This allows the game to reference the
         // textures during frame rendering.
         std::map<std::string, Texture> textureMap;
+        std::map<std::string, Mesh> meshMap;
+        
         
         UINT m_srvDescriptorSize = 0;
 

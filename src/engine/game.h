@@ -13,6 +13,6 @@ class Game {
 
     public:
         virtual RenderInitData getInitData(CommandLine cmdline, Window window) = 0;
-        virtual FrameData getFrameData() = 0;
+        virtual FrameSubmission getFrameData() = 0;
 
 };

@@ -4,6 +4,8 @@
 #include <Windows.h>
 #include <DirectXMath.h>
 #include <d3d12.h>
+#include <d3d11.h>
+#include <DirectXTK/SimpleMath.h>
 #include "geometry.h"
 
 enum class InputElementType
@@ -23,6 +25,8 @@ class InputLayout
     public:
         InputLayout& addElement(InputLayoutElement element);
         std::vector<D3D12_INPUT_ELEMENT_DESC> asDX12InputLayout();
+        std::vector<D3D11_INPUT_ELEMENT_DESC> asDX11InputLayout();
+        uint32_t stride();
 
     private:
         std::vector<InputLayoutElement> elements;
@@ -78,17 +82,30 @@ struct RenderInitData {
 
 struct ObjectRenderData 
 {
-    DirectX::XMFLOAT4X4 worldMatrix;
+    // The count of world matrices 
+    // decides how many instances we have of this object.
+    // So if you want 1000 instances of this object, 
+    // you must add 1000 world matrices. 
+    // The engine will instance-batch all those objects.
+    std::vector<DirectX::SimpleMath::Matrix> worldMatrices;
     std::string textureId;
+    std::string meshId;
+    std::string inputLayoutId;
+
 
 };
 
-struct FrameData {
-    DirectX::XMFLOAT4X4 viewMatrix;
-    DirectX::XMFLOAT4X4 projectionMatrix;
+// Every ViewSubmission
+struct ViewSubmission
+{
+    DirectX::SimpleMath::Matrix viewMatrix;
+    DirectX::SimpleMath::Matrix projectionMatrix;
     std::vector<ObjectRenderData> objectRenderData;
 
+};
 
+struct FrameSubmission {
+    std::vector<ViewSubmission> viewSubmissions;
 
 };
 
@@ -96,9 +113,6 @@ class Renderer {
 
     public:
         virtual void initialize(RenderInitData initData) = 0;
-
-
-    protected:
-        RenderInitData initData;
+        virtual void doFrame(FrameSubmission frameData) = 0;
 
 };

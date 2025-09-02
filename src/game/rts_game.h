@@ -9,6 +9,6 @@ class RTSGame : public Game {
 
     public:
         RenderInitData getInitData(CommandLine cmdline, Window window) override;
-        FrameData getFrameData() override;
+        FrameSubmission getFrameData() override;
 
 };

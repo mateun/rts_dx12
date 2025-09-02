@@ -8,10 +8,10 @@
         "name": "DX12Test launch",
         "type": "cppvsdbg",
         "request": "launch",
-        "program": "${workspaceFolder}/build/dx12_rts.exe",
+        "program": "${workspaceFolder}/build/dx11_rts.exe",
         "args": ["ide"],
         "stopAtEntry": false,
-        "cwd": "${fileDirname}",
+        "cwd": "${workspaceFolder}/build",
         "preLaunchTask": "CMake: build",
         "environment": [],
     }
