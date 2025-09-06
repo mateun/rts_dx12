@@ -4,14 +4,18 @@
 #include "shader.h"
 #include <string>
 #include <d3dcompiler.h>
+#include <optional>
 #include <DirectXTK/SimpleMath.h>
 #include "renderer.h"
+#include "../lib/include/stb_image.h"
+
+extern DirectX::SimpleMath::Vector2 resizedDimension; 
 
 void DX11Renderer::initialize(RenderInitData initData) 
 {
-
     screenWidth = initData.screenWidth;
     screenHeight = initData.screenHeight;
+    hwnd = initData.hwnd;
     D3D_FEATURE_LEVEL featureLevels =  D3D_FEATURE_LEVEL_11_1;
     UINT flags = 0;
     #ifdef _DEBUG 
@@ -145,6 +149,8 @@ void DX11Renderer::initialize(RenderInitData initData)
         inputLayoutMap[pso.id] = { pso.inputLayout };
     }
 
+    
+
     objectTransformBuffer = createBuffer(nullptr, sizeof(ObjectTransformCB), D3D11_USAGE_DYNAMIC, D3D11_BIND_CONSTANT_BUFFER);
     cameraBuffer = createBuffer(nullptr, sizeof(CameraCB), D3D11_USAGE_DYNAMIC, D3D11_BIND_CONSTANT_BUFFER);
     instanceBuffer = createBuffer(nullptr, sizeof(InstanceData) * maxInstances, 
@@ -163,6 +169,230 @@ void DX11Renderer::initialize(RenderInitData initData)
         meshMap[md.id] = Mesh {vb, ib, md.geometry.indices.size()};
     }
 
+    for (auto& td : initData.textureDescriptors) {
+        auto image = loadImagePixels(td.filePath);
+        auto texture = createTexture(image.pixels, image.w, image.h);
+        textureMap[td.id] = texture;
+    }
+
+    // Text rendering
+    {
+        // Create separate pipeline state layout for text rendering
+        auto textShader = createShaderProgram(L"../shaders/text.hlsl");
+        auto textInputLayout = InputLayout().addElement({InputElementType::POSITION}).addElement({InputElementType::UV});
+        auto inputLayout = createInputLayout(textInputLayout, &textShader);
+        
+        shaderMap["text"] = textShader;
+        dxInputLayoutMap["text"] =  inputLayout ;
+        inputLayoutMap["text"] = { textInputLayout };
+
+        for (auto& fd : initData.fontDescriptors) {
+            auto font = createFont(fd.fontFilePath, fd.size);
+            fontMap[fd.id] = font;
+        }
+
+        for (auto& sd : initData.snippetDescriptors) {
+            renderTextIntoQuad(sd.snippetId, sd.fontId, sd.text);
+        }
+    }
+
+}
+
+void DX11Renderer::renderTextIntoQuad(const std::string& snippetId, const std::string& fontId, const std::string& text) {
+    std::optional<TextSnippet> oldSnippet;
+    if (snippetMap.find(snippetId) != snippetMap.end()) {
+        oldSnippet = snippetMap[snippetId];
+        oldSnippet.value().geometry.vertices.clear();
+        oldSnippet.value().geometry.indices.clear();
+        oldSnippet.value().geometry.positions.clear();
+        oldSnippet.value().geometry.uvs.clear();
+    }
+
+    const Font& font = fontMap[fontId];
+
+    auto textSnippet = oldSnippet.has_value() ? oldSnippet : TextSnippet();
+    textSnippet.value().fontId = fontId;
+    float penX = 0, penY = 0;
+    float minX = std::numeric_limits<float>::max();
+    float maxX = -std::numeric_limits<float>::max();
+    float minY = std::numeric_limits<float>::max();
+    float maxY = -std::numeric_limits<float>::max();
+    float baseline = font.baseLine;
+    int charCounter = 0;
+    for (auto c : text)
+    {
+        float tempPenY = 0;
+        stbtt_aligned_quad q;
+        stbtt_GetBakedQuad(font.bakedChars.data(), 512, 512, c - 32, &penX, &tempPenY, &q, 1);
+
+        float pixel_aligned_x0 = std::floor(q.x0 + 0.5f);
+        float pixel_aligned_y0 = std::floor(q.y0 + 0.5f);
+        float pixel_aligned_x1 = std::floor(q.x1 + 0.5f);
+        float pixel_aligned_y1 = std::floor(q.y1 + 0.5f);
+
+        q.x0 = pixel_aligned_x0;
+        q.y0 = pixel_aligned_y0;
+        // q.y0 = -12;
+        // q.y0 = 0;
+        q.x1 = pixel_aligned_x1;
+        q.y1 = pixel_aligned_y1;
+        // q.y1 = 12;
+
+        // Positions
+        // textMeshData->positionMasterList.push_back(glm::vec3(q.x0, q.y0, 0));
+        // textMeshData->positionMasterList.push_back(glm::vec3(q.x1, q.y0, 0));
+        // textMeshData->positionMasterList.push_back(glm::vec3(q.x1, q.y1, 0));
+        // textMeshData->positionMasterList.push_back(glm::vec3(q.x0, q.y1, 0));
+
+        using namespace DirectX::SimpleMath;
+
+        float flipped_y0 = baseline - q.y1;
+        float flipped_y1 = baseline - q.y0;
+        textSnippet.value().geometry.positions.push_back({q.x0, flipped_y0, 0});
+        textSnippet.value().geometry.positions.push_back({q.x1, flipped_y0, 0});
+        textSnippet.value().geometry.positions.push_back({q.x1, flipped_y1, 0});
+        textSnippet.value().geometry.positions.push_back({q.x0, flipped_y1, 0});
+
+        // UVS
+        // textMeshData->uvMasterList.push_back({q.s0, q.t0});
+        // textMeshData->uvMasterList.push_back({q.s1, q.t0});
+        // textMeshData->uvMasterList.push_back({q.s1, q.t1});
+        // textMeshData->uvMasterList.push_back({q.s0, q.t1});
+
+        // Flip vertical uv coordinates
+        textSnippet.value().geometry.uvs.push_back(Vector2{q.s0, q.t1});
+        textSnippet.value().geometry.uvs.push_back(Vector2{q.s1, q.t1});
+        textSnippet.value().geometry.uvs.push_back(Vector2{q.s1, q.t0});
+        textSnippet.value().geometry.uvs.push_back(Vector2{q.s0, q.t0});
+
+        //---------------------------------------
+        // INDICES
+        int offset = charCounter * 4;
+        textSnippet.value().geometry.indices.push_back(2 + offset);
+        textSnippet.value().geometry.indices.push_back(1 + offset);
+        textSnippet.value().geometry.indices.push_back(0 + offset);
+        textSnippet.value().geometry.indices.push_back(2 + offset);
+        textSnippet.value().geometry.indices.push_back(0 + offset);
+        textSnippet.value().geometry.indices.push_back(3 + offset);
+
+        // Flipped
+        // textMeshData->indices.push_back(0 + offset);
+        // textMeshData->indices.push_back(1 + offset);
+        // textMeshData->indices.push_back(2 + offset);
+        // textMeshData->indices.push_back(3 + offset);
+        // textMeshData->indices.push_back(0 + offset);
+        // textMeshData->indices.push_back(2 + offset);
+        // ----------------------------------------------------------------------------------
+
+        charCounter++;
+
+        // Track min/max for bounding box
+        minX = std::min(minX, q.x0);
+        maxX = std::max(maxX, q.x1);
+
+        if (c == 32)
+            continue;                // ignore space for Y, as this is always zero and messes things up.
+        minY = std::min(minY, q.y0); // lowest part (descenders)
+        minY = std::min(minY, q.y1);
+
+        maxY = std::max(maxY, q.y0); // highest part (ascenders)
+        maxY = std::max(maxY, q.y1);
+    }
+
+    
+    for (int i = 0; i < textSnippet.value().geometry.positions.size(); i++)
+    {
+        textSnippet.value().geometry.vertices.push_back(textSnippet.value().geometry.positions[i].x);
+        textSnippet.value().geometry.vertices.push_back(textSnippet.value().geometry.positions[i].y);
+        textSnippet.value().geometry.vertices.push_back(textSnippet.value().geometry.positions[i].z);
+        textSnippet.value().geometry.vertices.push_back(textSnippet.value().geometry.uvs[i].x);
+        textSnippet.value().geometry.vertices.push_back(textSnippet.value().geometry.uvs[i].y);
+    }
+
+    if (!oldSnippet) {
+        textSnippet.value().mesh.vb = createBuffer(
+            textSnippet.value().geometry.vertices.data(),
+            textSnippet.value().geometry.vertices.size() * sizeof(float), 
+            D3D11_USAGE_DYNAMIC, D3D11_BIND_VERTEX_BUFFER, 0, 0);
+
+         textSnippet.value().mesh.ib = createBuffer(
+                textSnippet.value().geometry.indices.data(),
+                textSnippet.value().geometry.indices.size() * sizeof(uint32_t),
+                D3D11_USAGE_DYNAMIC, D3D11_BIND_INDEX_BUFFER, 0, 0);
+    }
+    else {
+
+        BufferUpdateDesc vbDesc;
+        vbDesc.buffer = textSnippet.value().mesh.vb;
+        vbDesc.size = textSnippet.value().geometry.vertices.size() * sizeof(float);
+        vbDesc.data = textSnippet.value().geometry.vertices.data();
+        updateBuffer(vbDesc);
+
+        BufferUpdateDesc ibDesc;
+        ibDesc.buffer = textSnippet.value().mesh.ib;
+        ibDesc.size = textSnippet.value().geometry.indices.size() * sizeof(uint32_t);
+        ibDesc.data = textSnippet.value().geometry.indices.data();
+        updateBuffer(ibDesc);
+    }
+    textSnippet.value().mesh.indexCount = textSnippet.value().geometry.indices.size();
+
+    snippetMap[snippetId] = textSnippet.value();
+    
+}
+
+Image DX11Renderer::loadImagePixels(const std::string& filePath) {
+    int imageChannels, width, height;
+    stbi_set_flip_vertically_on_load(true);
+    auto pixels = stbi_load(filePath.c_str(), 
+            &width, &height, 
+            &imageChannels, 4);
+
+    return {pixels, width, height, 4};
+}
+
+
+
+Texture DX11Renderer::createTexture(uint8_t* pixels, uint32_t width, uint32_t height, uint32_t numChannels, DXGI_FORMAT format ) {
+
+    D3D11_TEXTURE2D_DESC desc;
+    ZeroMemory(&desc, sizeof(desc));
+    desc.Width = width;
+    desc.Height = height;
+    desc.Format = format;
+    desc.Usage = D3D11_USAGE_DEFAULT;
+    desc.CPUAccessFlags = 0;
+    desc.MiscFlags = 0;
+    desc.MipLevels = 1;
+    desc.ArraySize = 1;
+    desc.SampleDesc.Count = 1;
+    desc.SampleDesc.Quality = 0;
+    desc.BindFlags = D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET;
+
+    ComPtr<ID3D11Texture2D> dxTex;
+    D3D11_SUBRESOURCE_DATA initialData = {};
+    if (pixels) {
+        initialData.pSysMem = pixels;
+        initialData.SysMemPitch = width * (numChannels == 3? 4 : numChannels);
+        initialData.SysMemSlicePitch = 0;
+        auto result = device_->CreateTexture2D(&desc, &initialData, dxTex.GetAddressOf());
+        assert(SUCCEEDED(result));
+
+    } else {
+        ThrowIfFailed(device_->CreateTexture2D(&desc, nullptr, dxTex.GetAddressOf()));
+        
+    }
+
+    D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+    srvDesc.Format = desc.Format;
+    srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+    srvDesc.Texture2D.MostDetailedMip = 0;
+    srvDesc.Texture2D.MipLevels = 1;
+    
+    ComPtr<ID3D11ShaderResourceView> srv;
+    ThrowIfFailed(device_->CreateShaderResourceView(dxTex.Get(), &srvDesc, srv.GetAddressOf()));
+    
+    return {dxTex, srv};
+    
 }
 
 ComPtr<ID3D11ShaderResourceView> DX11Renderer::createShaderResourceViewForBuffer(ComPtr<ID3D11Buffer> buffer, 
@@ -276,18 +506,20 @@ ComPtr<ID3D11Buffer> DX11Renderer::createBuffer(void *data, int size, D3D11_USAG
     } else {
         ThrowIfFailed(device_->CreateBuffer(&bd, nullptr, &buffer));
     }
-    
-
-    
-    
 
     return buffer;
 }
 
 void DX11Renderer::doFrame(FrameSubmission frameSubmission)
 {
-    // bindBackBuffer(0, 0, initData.screenWidth, initData.screenHeight);
-    clearBackBuffer(1, 0, 1, 1);
+    
+    if ((resizedDimension.x > 0 && resizedDimension.y > 0) && (resizedDimension.x != screenWidth || resizedDimension.y != screenHeight)){
+        screenWidth = resizedDimension.x;
+        screenHeight = resizedDimension.y;
+        resizeSwapChain(hwnd, resizedDimension.x, resizedDimension.y);
+    }
+    
+    clearBackBuffer(0, 0, 0, 1);
     bindBackBuffer(0, 0, screenWidth, screenHeight);
     for (auto& vs: frameSubmission.viewSubmissions) {
 
@@ -333,6 +565,8 @@ void DX11Renderer::doFrame(FrameSubmission frameSubmission)
             sbd.data = instanceItems;
             uploadStructuredBufferData(sbd);
             
+            auto texture = textureMap[ord.textureId];
+            bindTexture(0, texture);
             ctx->IASetInputLayout(dxInputLayout.Get());
             ctx->VSSetShader((ID3D11VertexShader*) shaderMap[ord.inputLayoutId].vs.vertexShader.Get(), nullptr, 0);
             ctx->PSSetShader((ID3D11PixelShader*) shaderMap[ord.inputLayoutId].ps.pixelShader.Get(), nullptr, 0);
@@ -342,15 +576,57 @@ void DX11Renderer::doFrame(FrameSubmission frameSubmission)
             ctx->IASetIndexBuffer(mesh.ib.Get(), DXGI_FORMAT_R32_UINT, 0);
             ctx->DrawIndexedInstanced(mesh.indexCount, instanceItems.size(), 0, 0, 0);
         }
+
+        // Text rendering:
+        for (auto& snippetDesc : vs.textRenderData) 
+        {
+
+            auto snippet = snippetMap[snippetDesc.snippetId];
+            renderTextIntoQuad(snippetDesc.snippetId, snippet.fontId, snippetDesc.updatedText);
+            snippet = snippetMap[snippetDesc.snippetId];
+
+            // Upload world matrix
+            ConstantBufferDesc ocb= {};
+            ocb.buffer = objectTransformBuffer;
+            ocb.size = sizeof(ObjectTransformCB);
+            ocb.bufferData = &snippetDesc.worldMatrices[0];
+            ocb.slot = 1;
+            ocb.shaderType = ShaderType::Vertex;
+            uploadConstantBufferData(ocb);
+
+            
+
+            ctx->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            
+            auto& mesh = snippet.mesh;
+            
+            auto inputLayout = inputLayoutMap["text"];
+            auto dxInputLayout = dxInputLayoutMap["text"];
+            auto stride = inputLayout.stride();
+
+            auto font = fontMap[snippet.fontId];
+            bindTexture(0, font.atlasTexture);
+            ctx->IASetInputLayout(dxInputLayout.Get());
+            ctx->VSSetShader((ID3D11VertexShader*) shaderMap["text"].vs.vertexShader.Get(), nullptr, 0);
+            ctx->PSSetShader((ID3D11PixelShader*) shaderMap["text"].ps.pixelShader.Get(), nullptr, 0);
+            std::vector<ID3D11Buffer*> vertexBuffers = {mesh.vb.Get()};
+            uint32_t offsets[] = {0};
+            ctx->IASetVertexBuffers(0, 1, vertexBuffers.data(), &stride, offsets);
+            ctx->IASetIndexBuffer(mesh.ib.Get(), DXGI_FORMAT_R32_UINT, 0);
+            ctx->DrawIndexed(mesh.indexCount, 0, 0);
+        }
     }
 
     flipBackbuffer();
 }
 
-DX11Renderer::~DX11Renderer()
-{
-    std::cout << "in dx11 renderer dtr." << std::endl;
+void DX11Renderer::updateBuffer(BufferUpdateDesc desc) {
+    D3D11_MAPPED_SUBRESOURCE mapped;
+    ThrowIfFailed(ctx->Map(desc.buffer.Get(), 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped));
+    memcpy(mapped.pData, desc.data, desc.size);
+    ctx->Unmap(desc.buffer.Get(), 0);
 }
+
 
 void DX11Renderer::uploadConstantBufferData(ConstantBufferDesc constantBuffer)
 {
@@ -379,6 +655,54 @@ void DX11Renderer::uploadStructuredBufferData(StructuredBufferDesc desc)
     ID3D11ShaderResourceView* srvs[] = { desc.srv.Get()};
     ctx->VSSetShaderResources(desc.slot, 1, srvs);
         
+}
+
+Font DX11Renderer::createFont(const std::string& fontPath, int fontSize)
+{
+    // Read font file
+    FILE *fp = fopen(fontPath.c_str(), "rb");
+    if (!fp) {
+        fprintf(stderr, "Failed to open TTF file.\n");
+        // TODO
+        //throw std::runtime_error("Failed to open TTF file.");
+    }
+    fseek(fp, 0, SEEK_END);
+    int fileSize = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+    unsigned char *ttf_buffer = new unsigned char[fileSize];
+    fread(ttf_buffer, 1, fileSize, fp);
+    fclose(fp);
+
+    // Retrieve font measurements
+    stbtt_fontinfo info;
+    stbtt_InitFont(&info, ttf_buffer, 0);
+
+    int ascent, descent, lineGap;
+    stbtt_GetFontVMetrics(&info, &ascent, &descent, &lineGap);
+    float scale = stbtt_ScaleForPixelHeight(&info, fontSize);
+    auto scaled_ascent_  = ascent  * scale;  // typically a positive number
+    auto scaled_descent_ = descent * scale;  // typically negative
+    auto scaled_line_gap_ = lineGap * scale;
+
+    Font font;
+    uint8_t* pixels = new uint8_t[512 * 512];
+    int width = 512, height = 512;
+    font.baseLine = scaled_ascent_;
+    font.lineHeight = (scaled_ascent_ - scaled_descent_) + scaled_line_gap_;
+    font.bakedChars.resize(96);
+    int result = stbtt_BakeFontBitmap(ttf_buffer, 0, fontSize,
+                                    pixels, width, height,
+                                    32, 96, font.bakedChars.data());
+
+    if (result <= 0) {
+        fprintf(stderr, "Failed to bake font bitmap.\n");
+        delete[] ttf_buffer;
+        // TODO error case?!
+    }
+
+    font.atlasTexture = createTexture(pixels, width, height, 1, DXGI_FORMAT_R8_UNORM);
+
+    return font;
 }
 
 void DX11Renderer::flipBackbuffer() 
@@ -429,6 +753,19 @@ void DX11Renderer::createDefaultRasterizerState() {
     device_->CreateRasterizerState(&rsDesc, rasterStateSolid.GetAddressOf());
     ctx->RSSetState(rasterStateSolid.Get());
 }
+
+void DX11Renderer::bindTexture(uint32_t slot, Texture& texture) {
+    ctx->PSSetShaderResources(slot, 1, texture.srv.GetAddressOf());
+
+        // if (sampler) {
+        //     ctx->PSSetSamplers(sampler->slot(), 1, sampler->samplerState().GetAddressOf());
+        // } else {
+        
+    ctx->PSSetSamplers(0, 1, &defaultSamplerState);
+        
+       // }
+}
+ 
 
 void DX11Renderer::bindInputLayout(ComPtr<ID3D11InputLayout> inputLayout) {
     ctx->IASetInputLayout(inputLayout.Get());

@@ -67,8 +67,8 @@ struct PSOut {
 
 float4 directionalLight(PSInput pixelShaderInput) 
 {
-    // // float4 colorFromTexture = diffuseTexture.Sample(defaultSampler, pixelShaderInput.uv);
-    float4 colorFromTexture = float4(0.9, 0.9, 0.9, 1);
+    float4 colorFromTexture = diffuseTexture.Sample(defaultSampler, pixelShaderInput.uv);
+    // float4 colorFromTexture = float4(0.9, 0.9, 0.9, 1);
     // float teamColorValue = getTeamColorMapValue(pixelShaderInput.uv);
     // colorFromTexture.rgb = lerp(colorFromTexture.rgb, teamColor.rgb, teamColorValue);
     float3 normal = normalize(pixelShaderInput.normal);
@@ -82,14 +82,10 @@ float4 directionalLight(PSInput pixelShaderInput)
     litColor.a = colorFromTexture.a;
     return litColor;
 }
-
+ 
 
 float4 PSMain(PSInput input) : SV_TARGET
 {
-    float4 litColor = directionalLight(input);
-    return litColor;
+    return diffuseTexture.Sample(defaultSampler, input.uv);
 
-    
-    
-    
 }

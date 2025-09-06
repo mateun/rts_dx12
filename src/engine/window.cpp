@@ -1,20 +1,54 @@
 
 #include "appwindow.h"
+#include "engine.h"
 #include <windows.h>
 #include <string>
 #include <vector>
+#include <directxtk/SimpleMath.h>
 
+
+using namespace DirectX::SimpleMath;
+Vector2 resizedDimension;
+Vector2 tempDimension;
+
+std::vector<Event*> frameEvents;
+
+static bool inReSizing = false;
 
 static LRESULT CALLBACK engineWindowProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) 
 {
     switch (msg) 
     {
+        case WM_SIZE:
+
+            if (wParam == SIZE_MINIMIZED) break;
+
+            tempDimension.x = LOWORD(lParam);
+            tempDimension.y = HIWORD(lParam);
+
+            
+            
+            break;
+            
+        case WM_ENTERSIZEMOVE:
+            inReSizing = true;
+            break;
+
+        case WM_EXITSIZEMOVE:
+            inReSizing = false;
+            resizedDimension = tempDimension;   
+            frameEvents.emplace_back(new Event{"resized", &resizedDimension});
+            
+            break;
+
         case WM_DESTROY:
             PostQuitMessage(0);
             return 0;
         default:
             return DefWindowProc(hwnd, msg, wParam, lParam);
     }
+
+    return 0;
     
 
 }
@@ -63,18 +97,19 @@ Window createAppWindow(int width, int height,
     return {width, height, hwnd};
 }
 
-std::vector<std::string> pollWindowMessages(Window window)
+std::vector<Event*> pollWindowMessages(Window window)
 {
-    std::vector<std::string> events;
+    
+    frameEvents.clear();
+
     MSG msg;
     while (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
         if (msg.message == WM_QUIT) {
-
-            events.emplace_back("quit");
+            frameEvents.emplace_back(new Event {"quit", nullptr});
         }
         TranslateMessage(&msg);
         DispatchMessageW(&msg);
     }
 
-    return events;
+    return frameEvents;
 }

@@ -4,18 +4,22 @@
 #include <map>
 #include "comptr.h"
 #include "shader.h"
+#include <stb_truetype.h>
 
 struct Mesh;
 struct ConstantBufferDesc;
 struct StructuredBufferDesc;
+struct Texture;
+struct Image;
+struct BufferUpdateDesc;
+struct Font;
+struct TextSnippet;
 class DX11Renderer : public Renderer {
 
     public:
         virtual void initialize(RenderInitData initData) override;
-        
         void doFrame(FrameSubmission frameData) override;
-        virtual ~DX11Renderer();
-        
+
     protected:
         void ThrowIfFailed(HRESULT result);
         void clearBackBuffer(float r, float g, float b, float a);
@@ -26,13 +30,20 @@ class DX11Renderer : public Renderer {
         void setViewport(int originX, int originY, int width, int height);
         void createDefaultBlendState();
         void createDefaultRasterizerState();
+        void bindTexture(uint32_t slot, Texture &texture);
         void bindInputLayout(ComPtr<ID3D11InputLayout> inputLayout);
         void bindShader(const ShaderProgram *shaderProgram);
         void bindBackBuffer(int x, int y, int width, int height);
         void createDefaultSamplerState();
         void uploadConstantBufferData(ConstantBufferDesc constantBuffer);
         void uploadStructuredBufferData(StructuredBufferDesc desc);
+        void renderTextIntoQuad(const std::string &snippedId, const std::string &fontId, const std::string &text);
+        void updateBuffer(BufferUpdateDesc desc);
+        Font createFont(const std::string& fontPath, int size);
+        Geometry *renderTextIntoQuad(const std::string &fontId, const std::string &text, Geometry *oldMesh);
         ShaderProgram createShaderProgram(const std::wstring &filePath);
+        Texture createTexture(uint8_t *pixels, uint32_t width, uint32_t height, uint32_t numChannels = 4, DXGI_FORMAT format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB);
+        Image loadImagePixels(const std::string &filePath);
         ComPtr<ID3D11DeviceChild> createShader(const std::wstring &filePath, ShaderType shaderType);
         ComPtr<ID3D11Buffer> createBuffer(void *data, int size, D3D11_USAGE bufferUsage, D3D11_BIND_FLAG bindFlags, uint32_t miscFlags = 0, uint32_t structuredByteStrid = 0);
         ComPtr<ID3D11InputLayout> createInputLayout(InputLayout attributeDescriptions, ShaderProgram *shaderProgram);
@@ -58,12 +69,16 @@ class DX11Renderer : public Renderer {
         ComPtr<ID3D11BlendState> blendState = nullptr;
         ComPtr<ID3D11RasterizerState> rasterStateSolid = nullptr;
         ComPtr<ID3D11Debug> debugger = nullptr;
+        HWND hwnd;
         int screenWidth = 0;
         int screenHeight = 0;
 
 
 
         std::map<std::string, Mesh> meshMap;
+        std::map<std::string, Texture> textureMap;
+        std::map<std::string, Font> fontMap;
+        std::map<std::string, TextSnippet> snippetMap;
         std::map<std::string, ShaderProgram> shaderMap;
         std::map<std::string, ComPtr<ID3D11InputLayout>> dxInputLayoutMap;
         std::map<std::string, InputLayout> inputLayoutMap;
@@ -75,6 +90,13 @@ class DX11Renderer : public Renderer {
 struct Texture {
     ComPtr<ID3D11Texture2D> texture;
     ComPtr<ID3D11ShaderResourceView> srv;
+};
+
+struct Image {
+    uint8_t* pixels;
+    int w;
+    int h;
+    int numChannels;
 };
 
 struct Mesh {
@@ -110,6 +132,13 @@ struct StructuredBufferDesc
 
 };
 
+struct BufferUpdateDesc {
+    ComPtr<ID3D11Buffer> buffer;
+    void* data = nullptr;
+    size_t size;
+
+};
+
 struct ConstantBufferDesc {
 
 
@@ -119,4 +148,21 @@ struct ConstantBufferDesc {
     uint32_t slot = 0;
     ShaderType shaderType = ShaderType::Vertex;
 
+};
+
+struct Font {
+    Texture atlasTexture;
+    float maxDescent = std::numeric_limits<float>::max();
+    float lineHeight = std::numeric_limits<float>::min();
+    float baseLine = 0.0f;
+    std::vector<stbtt_bakedchar> bakedChars;
+
+};
+
+
+struct TextSnippet 
+{
+    Mesh mesh;
+    Geometry geometry;
+    std::string fontId;
 };

@@ -8,6 +8,7 @@
 #include <DirectXTK/SimpleMath.h>
 #include "geometry.h"
 
+
 enum class InputElementType
 {
     POSITION,
@@ -15,6 +16,7 @@ enum class InputElementType
     NORMAL
 
 };
+
 
 struct InputLayoutElement {
     InputElementType type;
@@ -46,8 +48,15 @@ struct MeshDescriptor
 struct TextureDescriptor 
 {
     std::string id;
-    std::wstring filePath;
+    std::string filePath;
 
+};
+
+struct FontDescriptor
+{
+    std::string id;
+    std::string fontFilePath;
+    float size;
 };
 
 // PipelineState contains 
@@ -66,6 +75,14 @@ struct PipelineState {
 
 };
 
+struct SnippetDescriptor
+{
+    std::string fontId;
+    std::string snippetId;
+    std::string text;
+
+};
+
 struct RenderInitData {
 
     std::vector<PipelineState> pipelineStates;
@@ -77,7 +94,17 @@ struct RenderInitData {
     bool ide = false;
     std::vector<TextureDescriptor> textureDescriptors;
     std::vector<MeshDescriptor> meshDescriptors;
+    std::vector<FontDescriptor> fontDescriptors;
+    std::vector<SnippetDescriptor> snippetDescriptors;
 
+};
+
+struct TextRenderData 
+{
+    std::vector<DirectX::SimpleMath::Matrix> worldMatrices;
+    std::string snippetId;
+    std::string updatedText = "";
+  
 };
 
 struct ObjectRenderData 
@@ -101,6 +128,7 @@ struct ViewSubmission
     DirectX::SimpleMath::Matrix viewMatrix;
     DirectX::SimpleMath::Matrix projectionMatrix;
     std::vector<ObjectRenderData> objectRenderData;
+    std::vector<TextRenderData> textRenderData;
 
 };
 

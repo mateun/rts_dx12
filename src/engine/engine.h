@@ -1,4 +1,4 @@
-#pragma once
+
 
 /**
  * Defines the overall interface of the engine and
@@ -11,12 +11,22 @@
  * 1. Startup (once): engine -> game.getInitData()
  * 2. Each frame: engine -> game.getFrameData()
  * 
- * According to the dx12 philosophy, the initial data is used to 
+ * According to the DX12 (and in our case also DX11) philosophy, the initial data is used to 
  * setup every shader and PSO ever needed during the game. 
  * So the game must know what it needs for the entire game. 
  * We completely avoid any runtime "discovery" of new pipeline states. 
  * This would lead to stuttering during gameplay.
  */
+
+ #pragma once
+ #include <string>
+
+ struct Event
+ {
+    std::string name;
+    void* data = nullptr;
+
+ };
 
 
 /// @brief Must be implemented by ONE game per codebase.

@@ -8,7 +8,9 @@ struct Window;
 class RTSGame : public Game {
 
     public:
-        RenderInitData getInitData(CommandLine cmdline, Window window) override;
+        RenderInitData getInitData(CommandLine cmdline, Window* window) override;
         FrameSubmission getFrameData() override;
 
+    protected:
+        Window* window = nullptr;
 };

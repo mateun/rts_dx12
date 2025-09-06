@@ -16,10 +16,12 @@ find_package(directx-headers CONFIG REQUIRED)
 add_executable(dx11_rts src/engine/main.cpp src/game/rts_game.cpp 
                         src/engine/window.cpp src/engine/geometry.cpp 
                         src/engine/dx11renderer.cpp
+                        src/engine/game_util.cpp
+                        src/engine/game.cpp
                         src/engine/renderer.cpp
                         src/lib/tiny_gltf.cc
                         )
-target_compile_definitions(dx11_rts PRIVATE UNICODE)
+target_compile_definitions(dx11_rts PRIVATE UNICODE NOMINMAX)
 if (CMAKE_EXPORT_COMPILE_COMMANDS)
     target_compile_definitions(dx11_rts PRIVATE RUNNING_FROM_IDE=1)
 endif()
@@ -43,7 +45,7 @@ find_package(directx-headers CONFIG REQUIRED)
 
 add_executable(dx12_rts src/engine/main.cpp src/game/rts_game.cpp 
                         src/engine/window.cpp src/engine/geometry.cpp 
-                        src/engine/dx11renderer.cpp
+                        src/engine/dx12renderer.cpp
                         src/lib/tiny_gltf.cc
                         )
 target_compile_definitions(dx12_rts PRIVATE UNICODE)

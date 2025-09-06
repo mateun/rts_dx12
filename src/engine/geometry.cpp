@@ -21,5 +21,5 @@ Geometry GeometryFactory::getQuadGeometry()
 
     };
 
-    return {vertices, indices};
+    return Geometry {vertices, indices};
 }

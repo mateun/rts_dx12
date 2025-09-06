@@ -2,6 +2,7 @@
 #include <Windows.h>
 #include <string>
 #include <vector>
+#include "engine.h"
 
 struct Window 
 {
@@ -11,6 +12,6 @@ struct Window
 
 };
 
-std::vector<std::string> pollWindowMessages(Window window);
+std::vector<Event*> pollWindowMessages(Window window);
 
 Window createAppWindow(int width, int height, bool fullscreen);
